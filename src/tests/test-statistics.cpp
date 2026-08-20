@@ -82,6 +82,32 @@ static void test_reader_update_from_string() {    // would have caught a7a3b52
     CHECK(reader.getInterfaces().size() == 2);
 }
 
+static void test_counter_reset_does_not_spike() {
+    statistics::Interface iface("eth0");
+    statistics::Statistics s; std::memset(&s, 0, sizeof(s));
+    s.rx_bytes = 100000; s.tx_bytes = 80000;
+    for (int i = 0; i < 20; ++i) {
+        s.timestamp.tv_sec = 100 + i;
+        iface.update(s);
+        s.rx_bytes += 1000; s.tx_bytes += 1000;
+    }
+    CHECK_NEAR(iface.getReceiveSpeed(), 1000.0, 1e-9);
+    CHECK_NEAR(iface.getReceiveMax(), 1000.0, 1e-9);
+
+    s.timestamp.tv_sec = 120;                  // counters reset (x1 < x0)
+    s.rx_bytes = 100; s.tx_bytes = 50;
+    iface.update(s);
+    CHECK_NEAR(iface.getReceiveSpeed(), 0.0, 1e-9);
+    CHECK_NEAR(iface.getTransmitSpeed(), 0.0, 1e-9);
+    CHECK_NEAR(iface.getReceiveMax(), 1000.0, 1e-9);
+    CHECK(iface.getUpdated());
+
+    s.timestamp.tv_sec = 121;                  // recovery from new baseline
+    s.rx_bytes = 600; s.tx_bytes = 300;
+    iface.update(s);
+    CHECK_NEAR(iface.getReceiveSpeed(), 500.0, 1e-9);
+}
+
 int main() {
     test_ctor_zeroes_members();
     test_marked_updated_after_first_sample();
@@ -89,6 +115,7 @@ int main() {
     test_parse_extracts_interfaces();
     test_parse_skips_malformed_lines();
     test_reader_update_from_string();
+    test_counter_reset_does_not_spike();
     if (failures) {
         std::fprintf(stderr, "%d/%d checks FAILED\n", failures, checks);
         return EXIT_FAILURE;

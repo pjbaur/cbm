@@ -83,6 +83,19 @@ void Interface::update(const Statistics& statistics) {
         (x1.timestamp.tv_sec - x0.timestamp.tv_sec) * 1.
         + (x1.timestamp.tv_usec - x0.timestamp.tv_usec) * .000001;
 
+    const bool countersReset =
+        x1.rx_bytes < x0.rx_bytes || x1.tx_bytes < x0.tx_bytes;
+
+    if (timeDelta <= 0. || countersReset) {
+        // Counter reset/wrap or non-positive dt: delta is meaningless. Report
+        // zero, keep the new sample as baseline (memcpy above already stored
+        // it), leave the maxima untouched.
+        receiveSpeed_ = 0.0;
+        transmitSpeed_ = 0.0;
+        count++;
+        return;
+    }
+
     receiveSpeed_ = (x1.rx_bytes - x0.rx_bytes) / timeDelta;
     transmitSpeed_ = (x1.tx_bytes - x0.tx_bytes) / timeDelta;
 
