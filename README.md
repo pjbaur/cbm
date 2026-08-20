@@ -55,9 +55,6 @@ To build and install, run the following commands:
 On macOS, install the autotools first (`brew install autoconf automake
 libtool`); `./autogen.sh` needs `autoreconf`, which is not installed by
 default.
-    $ ./configure
-    $ make
-    # make install
 
 To return to pristine sources, use '$ ./autogen.sh clean'. To remove only the
 build outputs, use '$ make distclean'.
