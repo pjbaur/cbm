@@ -5,9 +5,8 @@ on this repository. `CLAUDE.md` is a symlink to this file.
 
 ## Repository layout
 
-- `origin` is the shared upstream repository
-  (`resurrecting-open-source-projects/cbm`). It is read-mostly: never push
-  local branches to it.
+- `origin` is the personal fork (`git@github.com:pjbaur/cbm.git`). Pushing
+  local branches to it is allowed and expected.
 - `master` mirrors `origin/master`. It only changes by merging the
   development branch, and always reflects a known-good state.
 - `sandbox` is the running development branch. All work happens here.
@@ -39,13 +38,15 @@ origin/master == master  (stable, only updated by merges)
 
 - Merge direction is one-way: `sandbox` into `master`. Never merge
   untested work into `master`.
-- When upstream moves, sync in this order:
+- When the upstream project (`resurrecting-open-source-projects/cbm`)
+  moves, sync in this order (requires a one-time
+  `git remote add upstream https://github.com/resurrecting-open-source-projects/cbm.git`):
   ```
-  git fetch origin
+  git fetch upstream
   git checkout sandbox
-  git merge origin/master     # resolve conflicts here
+  git merge upstream/master  # resolve conflicts here
   git checkout master
-  git merge --no-ff sandbox   # or fast-forward if already synced
+  git merge --no-ff sandbox  # or fast-forward if already synced
   ```
 - Do not use a Git Flow style layout (develop/release/hotfix branches);
   it is oversized for a solo-maintained project of this scale.
@@ -54,10 +55,10 @@ origin/master == master  (stable, only updated by merges)
 
 ## Contributing upstream
 
-To submit local work to the upstream project:
+`origin` is already the fork of `resurrecting-open-source-projects/cbm`,
+so submitting local work upstream needs no extra remotes:
 
-1. Fork `resurrecting-open-source-projects/cbm` on GitHub.
-2. `git remote add fork <your-fork-url>`
-3. Push `sandbox` (or a clean topic branch) to the fork.
-4. Open pull requests from there. Upstream accepts small, focused fixes —
-   keep each pull request a single logical change.
+1. Push `sandbox` (or a clean topic branch) to `origin`.
+2. Open pull requests on GitHub from `pjbaur/cbm` against
+   `resurrecting-open-source-projects/cbm`. Upstream accepts small,
+   focused fixes — keep each pull request a single logical change.
