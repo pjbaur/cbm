@@ -34,6 +34,10 @@ Nowadays, CBM is maintained by volunteers.
 
 CBM depends of libncurses to build.
 
+CBM runs on Linux only: it reads `/proc/net/dev` and uses the `SIOCGIFADDR`
+ioctl to inspect network interfaces. It compiles on other systems (e.g. macOS),
+but cannot display traffic there.
+
 To build and install, run the following commands:
 
     $ ./autogen.sh
@@ -41,9 +45,19 @@ To build and install, run the following commands:
     $ make
     # make install
 
-To return to original source code, you can use '$ make distclean' command.
+To return to pristine sources, use '$ ./autogen.sh clean'. To remove only the
+build outputs, use '$ make distclean'.
 
 On Debian systems you can use '# apt install cbm'.
+
+## Interactive keys ##
+
+While running, CBM can be controlled with the following keys:
+
+* Up/Down or p/n: select an interface to show details about.
+* q: exit the program.
+* b: switch between bits per second and bytes per second.
+* + and -: change the update interval by 100ms.
 
 ## AUTHOR ##
 
