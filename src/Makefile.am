@@ -24,10 +24,8 @@ bin_PROGRAMS = cbm
 cbm_SOURCES = cbm.cpp \
 	      ErrnoError.hpp \
 	      statistics.cpp statistics.hpp
-cbm_LDADD = -lncurses widgets/libwidgets.la
+cbm_LDADD = widgets/libwidgets.la
 
-distclean-local:
-	-rm -f *~ \
-	Makefile.in \
-	config.h.in \
-	widgets/Makefile.in
+check_PROGRAMS = test-statistics
+test_statistics_SOURCES = tests/test-statistics.cpp statistics.cpp
+TESTS = test-statistics

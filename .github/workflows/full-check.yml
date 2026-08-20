@@ -5,27 +5,37 @@ on: [push, pull_request]
 jobs:
   build:
 
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04]
+        compiler: [gcc, clang]
+
+    env:
+      CC: ${{ matrix.compiler }}
+      CXX: ${{ matrix.compiler == 'gcc' && 'g++' || 'clang++' }}
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
     - name: install_dependencies
-      run: sudo apt install libncurses5-dev
-    - name: first_build
-      run: |
-           ./autogen.sh
-           ./configure
-           make
-           sudo make install
-           sudo make uninstall
-           make distclean 
-    - name: second_build
-      run: |
-           ./autogen.sh
-           ./configure
-           make
-           sudo make install
-    - name: run_program
-      run: |
-           cbm --version
+      run: sudo apt install libncurses-dev
+    - run: ./autogen.sh
+    - run: ./configure
+    - run: make
+    - run: make check
+    - run: sudo make install
+    - run: cbm --version
+    - run: sudo make uninstall
+
+  sanitize:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - run: sudo apt install libncurses-dev
+    - run: ./autogen.sh
+    - run: ./configure CXXFLAGS="-g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer" LDFLAGS="-fsanitize=address,undefined"
+    - run: make
+    - run: make check
+    - run: src/cbm --version
 

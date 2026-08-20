@@ -1,0 +1,49 @@
+# local agent/tool state
+.trees/
+.DS_Store
+Thumbs.db
+.env
+.env.local
+.env.*.local
+.claude/settings.local.json
+.claude/worktrees/
+
+# autotools / libtool generated
+Makefile
+Makefile.in
+aclocal.m4
+autom4te.cache/
+compile
+config.guess
+config.log
+config.status
+config.sub
+configure
+depcomp
+install-sh
+libtool
+ltmain.sh
+missing
+stamp-h1
+test-driver
+m4/*.m4
+
+# build outputs
+*.o
+*.lo
+*.la
+.deps/
+.libs/
+src/cbm
+src/config.h
+src/config.h.in
+*~
+
+# test harness outputs
+src/test-statistics
+src/test-statistics.log
+*.trs
+test-suite.log
+
+# dist output
+*.tar.gz

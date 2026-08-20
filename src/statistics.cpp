@@ -23,19 +23,24 @@
 #include "statistics.hpp"
 #include "ErrnoError.hpp"
 #include <algorithm>
-#include <assert.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include <sys/time.h>
+#include <sstream>
 
 #define PROC_NET_DEV "/proc/net/dev"
 
 namespace statistics {
 
-Interface::Interface(const std::string& name) : name_(name), updated_(false), receiveMax_(0.0), transmitMax_(0.0) {}
+Interface::Interface(const std::string& name)
+    : name_(name), updated_(false), initialized_(false), warmupCount_(0),
+      receiveSpeed_(0.0), transmitSpeed_(0.0),
+      receiveMax_(0.0), transmitMax_(0.0) {
+    memset(statistics_, 0, sizeof(statistics_));
+}
 
 class InterfaceNameMatchesPredicate {
 public:
@@ -56,7 +61,15 @@ public:
 };
 
 void Interface::update(const Statistics& statistics) {
-    static unsigned int count = 0;
+    updated_ = true;
+
+    // First sample: there is no previous sample to diff against, so
+    // speeds cannot be computed yet. Keep them at zero.
+    if (!initialized_) {
+        memcpy(statistics_, &statistics, sizeof(Statistics));
+        initialized_ = true;
+        return;
+    }
 
     memcpy(statistics_ + 1, statistics_ + 0, sizeof(Statistics));
     memcpy(statistics_, &statistics, sizeof(Statistics));
@@ -68,99 +81,101 @@ void Interface::update(const Statistics& statistics) {
         (x1.timestamp.tv_sec - x0.timestamp.tv_sec) * 1.
         + (x1.timestamp.tv_usec - x0.timestamp.tv_usec) * .000001;
 
+    const bool countersReset =
+        x1.rx_bytes < x0.rx_bytes || x1.tx_bytes < x0.tx_bytes;
+
+    if (timeDelta <= 0. || countersReset) {
+        // Counter reset/wrap or non-positive dt: delta is meaningless. Report
+        // zero, keep the new sample as baseline (memcpy above already stored
+        // it), leave the maxima untouched.
+        receiveSpeed_ = 0.0;
+        transmitSpeed_ = 0.0;
+        warmupCount_++;
+        return;
+    }
+
     receiveSpeed_ = (x1.rx_bytes - x0.rx_bytes) / timeDelta;
     transmitSpeed_ = (x1.tx_bytes - x0.tx_bytes) / timeDelta;
 
-    count++;
+    warmupCount_++;
 
     // Waits some iterations before calculating max speeds.
     // This avoids presenting wrong initial peaks.
-    if (count < 8)
+    if (warmupCount_ < 8)
         return;
 
     if (receiveSpeed_ > receiveMax_)
         receiveMax_ = receiveSpeed_;
     if (transmitSpeed_ > transmitMax_)
         transmitMax_ = transmitSpeed_;
+}
 
-    updated_ = true;
+SampleList parseProcNetDev(const std::string& content,
+                           const struct timeval& timestamp) {
+    SampleList samples;
+    std::istringstream stream(content);
+    std::string line;
+    while (std::getline(stream, line)) {      // replaces while(!feof)+unchecked fgets
+        std::string::size_type colon = line.find(':');
+        if (colon == std::string::npos) continue;
+
+        std::string name = line.substr(0, colon);
+        std::string::size_type start = name.find_first_not_of(" \t");
+        name = (start == std::string::npos) ? std::string() : name.substr(start);
+
+        Statistics stats;
+        std::memset(&stats, 0, sizeof(stats));
+        stats.timestamp = timestamp;
+        if (sscanf(line.c_str() + colon + 1,
+                   "%llu %llu %llu %llu %llu %llu %llu %llu "
+                   "%llu %llu %llu %llu %llu %llu %llu %llu",
+                   &stats.rx_bytes, &stats.rx_packets, &stats.rx_errs, &stats.rx_drop,
+                   &stats.rx_fifo, &stats.rx_frame, &stats.rx_compressed, &stats.rx_multicast,
+                   &stats.tx_bytes, &stats.tx_packets, &stats.tx_errs, &stats.tx_drop,
+                   &stats.tx_fifo, &stats.tx_frame, &stats.tx_compressed, &stats.tx_multicast)
+                == 16) {
+            Sample sample = { name, stats };
+            samples.push_back(sample);
+        }
+    }
+    return samples;
 }
 
 void Reader::update() {
-    // Open /proc/net/dev
-    FILE *dev = fopen(PROC_NET_DEV, "r");
-    if (!dev)
-        throw ErrnoError("cannot open " PROC_NET_DEV);
+    FILE* dev = fopen(PROC_NET_DEV, "r");
+    if (!dev) throw ErrnoError("cannot open " PROC_NET_DEV);
+    std::string content;
+    char buf[4096];
+    size_t n;
+    while ((n = fread(buf, 1, sizeof(buf), dev)) > 0) content.append(buf, n);
+    bool readError = (ferror(dev) != 0);
+    fclose(dev);
+    if (readError) throw ErrnoError("cannot read " PROC_NET_DEV);
+    update(content);
+}
 
-    try {
-        // Clear the 'updated' flag for all interfaces
-        for (Interfaces::iterator interface = interfaces_.begin();
-                interface != interfaces_.end(); ++interface)
-            interface->setUpdated(false);
+void Reader::update(const std::string& devFileContents) {
+    struct timeval now;
+    struct timezone unused_timezone;
+    gettimeofday(&now, &unused_timezone);     // single timestamp for the whole read
 
-        // Read /proc/dev/net
-        while (!feof(dev)) {
-            char buf[500];
-            char *name, *statistics_string;
-            Statistics stats;
-            struct timezone unused_timezone;
+    const SampleList samples = parseProcNetDev(devFileContents, now);
 
-            // Read a line
-            fgets(buf, sizeof(buf), dev);
-            gettimeofday(&stats.timestamp, &unused_timezone);
+    for (Interfaces::iterator i = interfaces_.begin(); i != interfaces_.end(); ++i)
+        i->setUpdated(false);
 
-            // Find the colon separating the name from the statistics
-            statistics_string = strchr(buf, ':');
-            if (!statistics_string) continue;
-
-            // Get a pointer to the statistics
-            *statistics_string = 0;
-            ++statistics_string;
-
-            // Remove leading whitespace from the name
-            name = buf;
-            while (*name == ' ' || *name == '\t') ++name;
-
-            // Parse the statistics
-            if (sscanf(statistics_string, "%Lu %Lu %Lu %Lu %Lu %Lu %Lu %Lu "
-                       "%Lu %Lu %Lu %Lu %Lu %Lu %Lu %Lu",
-                       &stats.rx_bytes, &stats.rx_packets,
-                       &stats.rx_errs, &stats.rx_drop,
-                       &stats.rx_fifo, &stats.rx_frame,
-                       &stats.rx_compressed, &stats.rx_multicast,
-                       &stats.tx_bytes, &stats.tx_packets,
-                       &stats.tx_errs, &stats.tx_drop,
-                       &stats.tx_fifo, &stats.tx_frame,
-                       &stats.tx_compressed, &stats.tx_multicast)
-                    == 16) {
-
-                // Find the interface with the same name
-                Interfaces::iterator interface
-                        = std::find_if(interfaces_.begin(), interfaces_.end(),
-                                       InterfaceNameMatchesPredicate(name));
-
-                if (interface == interfaces_.end()) {
-                    // This is a new interface; add it to the list
-                    interfaces_.push_back(Interface(name));
-                    interface = interfaces_.end();
-                    --interface;
-                }
-
-                // Update the interface
-                interface->update(stats);
-            }
+    for (SampleList::const_iterator s = samples.begin(); s != samples.end(); ++s) {
+        Interfaces::iterator interface
+            = std::find_if(interfaces_.begin(), interfaces_.end(),
+                           InterfaceNameMatchesPredicate(s->name));
+        if (interface == interfaces_.end()) {
+            interfaces_.push_back(Interface(s->name));
+            interface = interfaces_.end();
+            --interface;
         }
-
-        // Remove all interfaces for which the updated flag was not set
-        interfaces_.remove_if(InterfaceNotUpdatedPredicate());
-
-        // Close the file
-        fclose(dev);
+        interface->update(s->statistics);
     }
-    catch (...) {
-        fclose(dev);
-        throw;
-    }
+    interfaces_.remove_if(InterfaceNotUpdatedPredicate());
 }
 
 void Interface::setUpdated(bool updated) {

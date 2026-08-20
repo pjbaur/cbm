@@ -20,4 +20,4 @@
 #
 
 man1_MANS = cbm.1
-EXTRA_DIST = $(man_MANS)
+EXTRA_DIST = cbm.txt create-man.sh cbm.1
