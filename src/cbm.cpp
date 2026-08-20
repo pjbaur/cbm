@@ -323,7 +323,9 @@ int main(int argc, char **argv) {
                     if (index == interfaceTable.getActiveRow()) {
                         // Get the details for the active interface
                         struct ifreq req;
-                        strcpy(req.ifr_name, interface->getName().c_str());
+                        std::memset(&req, 0, sizeof(req));
+                        std::strncpy(req.ifr_name, interface->getName().c_str(), IFNAMSIZ - 1);
+                        req.ifr_name[IFNAMSIZ - 1] = '\0';
                         if (ioctl(sock, SIOCGIFADDR, &req)) {
                             detailTable.setText(1, 1, "N/A");
                         }
