@@ -35,7 +35,12 @@
 
 namespace statistics {
 
-Interface::Interface(const std::string& name) : name_(name), updated_(false), receiveMax_(0.0), transmitMax_(0.0) {}
+Interface::Interface(const std::string& name)
+    : name_(name), updated_(false), initialized_(false),
+      receiveSpeed_(0.0), transmitSpeed_(0.0),
+      receiveMax_(0.0), transmitMax_(0.0) {
+    memset(statistics_, 0, sizeof(statistics_));
+}
 
 class InterfaceNameMatchesPredicate {
 public:
@@ -57,6 +62,14 @@ public:
 
 void Interface::update(const Statistics& statistics) {
     static unsigned int count = 0;
+
+    // First sample: there is no previous sample to diff against, so
+    // speeds cannot be computed yet. Keep them at zero.
+    if (!initialized_) {
+        memcpy(statistics_, &statistics, sizeof(Statistics));
+        initialized_ = true;
+        return;
+    }
 
     memcpy(statistics_ + 1, statistics_ + 0, sizeof(Statistics));
     memcpy(statistics_, &statistics, sizeof(Statistics));
