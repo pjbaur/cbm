@@ -1,4 +1,9 @@
 cbm 0.4.1 (unreleased)
+	   * Added macOS support: interface statistics come from the sysctl(3)
+	     NET_RT_IFLIST2 interface on macOS (/proc/net/dev on Linux), and the
+	     interface address lookup now uses getifaddrs(3) instead of the
+	     SIOCGIFADDR ioctl on all platforms. CI also builds and runs the tests
+	     on macOS 14 and 15.
    * Fixed interfaces being culled from the display on every update
      (regression in the uninitialized-statistics fix) and during the
      warmup window; interfaces now persist from the first frame.
