@@ -31,6 +31,13 @@
 #include <sys/time.h>
 #include <sstream>
 
+#ifdef __APPLE__
+#include <net/if.h>
+#include <net/route.h>
+#include <sys/socket.h>
+#include <sys/sysctl.h>
+#endif
+
 #define PROC_NET_DEV "/proc/net/dev"
 
 namespace statistics {
@@ -141,7 +148,84 @@ SampleList parseProcNetDev(const std::string& content,
     return samples;
 }
 
+#ifdef __APPLE__
+// Read per-interface statistics through the NET_RT_IFLIST2 sysctl,
+// which reports one if_msghdr2 per interface. All samples share
+// `timestamp`, mirroring the /proc/net/dev reader. Two kernel quirks
+// affect non-platform binaries: byte counters advance in 1 KiB steps,
+// and they wrap at 4 GiB; the counter-reset handling in
+// Interface::update copes with the wrap.
+static SampleList readInterfaceStatistics(const struct timeval& timestamp) {
+    SampleList samples;
+
+    int mib[6] = { CTL_NET, PF_ROUTE, 0, 0, NET_RT_IFLIST2, 0 };
+
+    size_t size = 0;
+    if (sysctl(mib, 6, NULL, &size, NULL, 0) != 0)
+        throw ErrnoError("cannot size the interface list");
+
+    std::vector<char> buffer(size);
+    // The interface list can change between the two sysctl calls; the
+    // kernel then fails with ENOMEM and reports the larger size needed.
+    for (int attempt = 0; ; ++attempt) {
+        if (buffer.empty() || sysctl(mib, 6, &buffer[0], &size, NULL, 0) == 0)
+            break;
+        if (errno != ENOMEM || size <= buffer.size() || attempt >= 16)
+            throw ErrnoError("cannot read the interface list");
+        buffer.resize(size);
+    }
+
+    size_t offset = 0;
+    while (offset + sizeof(unsigned short) <= size) {
+        unsigned short messageLength;
+        memcpy(&messageLength, &buffer[offset], sizeof(messageLength));
+        // Walk by ifm_msglen: RTM_IFINFO2 messages are longer than
+        // sizeof(struct if_msghdr2) because the kernel appends
+        // addresses, and other message types are shorter. Stop on a
+        // truncated tail rather than read past the buffer.
+        if (messageLength < sizeof(unsigned short)
+                || offset + messageLength > size)
+            break;
+        if (messageLength >= sizeof(struct if_msghdr2)) {
+            struct if_msghdr2 message;
+            memcpy(&message, &buffer[offset], sizeof(message));
+            if (message.ifm_type == RTM_IFINFO2) {
+                char name[IFNAMSIZ];
+                if (if_indextoname(message.ifm_index, name) != NULL) {
+                    const struct if_data64& data = message.ifm_data;
+                    Statistics stats;
+                    memset(&stats, 0, sizeof(stats));
+                    stats.timestamp = timestamp;
+                    stats.rx_bytes = data.ifi_ibytes;
+                    stats.rx_packets = data.ifi_ipackets;
+                    stats.rx_errs = data.ifi_ierrors;
+                    stats.rx_drop = data.ifi_iqdrops;
+                    stats.rx_multicast = data.ifi_imcasts;
+                    stats.tx_bytes = data.ifi_obytes;
+                    stats.tx_packets = data.ifi_opackets;
+                    stats.tx_errs = data.ifi_oerrors;
+                    stats.tx_drop = message.ifm_snd_drops;
+                    stats.tx_multicast = data.ifi_omcasts;
+                    // rx_fifo, rx_frame, rx_compressed and the tx
+                    // equivalents have no BSD counterpart and stay zero.
+                    Sample sample = { name, stats };
+                    samples.push_back(sample);
+                }
+            }
+        }
+        offset += messageLength;
+    }
+    return samples;
+}
+#endif // __APPLE__
+
 void Reader::update() {
+#ifdef __APPLE__
+    struct timeval now;
+    struct timezone unused_timezone;
+    gettimeofday(&now, &unused_timezone);
+    applySamples(readInterfaceStatistics(now));
+#else
     FILE* dev = fopen(PROC_NET_DEV, "r");
     if (!dev) throw ErrnoError("cannot open " PROC_NET_DEV);
     std::string content;
@@ -152,6 +236,7 @@ void Reader::update() {
     fclose(dev);
     if (readError) throw ErrnoError("cannot read " PROC_NET_DEV);
     update(content);
+#endif
 }
 
 void Reader::update(const std::string& devFileContents) {
@@ -159,8 +244,10 @@ void Reader::update(const std::string& devFileContents) {
     struct timezone unused_timezone;
     gettimeofday(&now, &unused_timezone);     // single timestamp for the whole read
 
-    const SampleList samples = parseProcNetDev(devFileContents, now);
+    applySamples(parseProcNetDev(devFileContents, now));
+}
 
+void Reader::applySamples(const SampleList& samples) {
     for (Interfaces::iterator i = interfaces_.begin(); i != interfaces_.end(); ++i)
         i->setUpdated(false);
 

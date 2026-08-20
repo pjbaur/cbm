@@ -83,6 +83,8 @@ public:
     const Interfaces& getInterfaces() const;
 
 private:
+    void applySamples(const SampleList& samples);
+
     Interfaces interfaces_;
 };
 
