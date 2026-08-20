@@ -330,15 +330,14 @@ int main(int argc, char **argv) {
                             detailTable.setText(1, 1, "N/A");
                         }
                         else {
-                            char addrString[100];
+                            char addrString[INET_ADDRSTRLEN];
                             struct sockaddr_in *addr
                                     = reinterpret_cast<struct sockaddr_in*>(
                                           &req.ifr_addr);
-                            inet_ntop(addr->sin_family,
-                                      &addr->sin_addr,
-                                      addrString, 100);
-
-                            detailTable.setText(1, 1, addrString);
+                            if (inet_ntop(AF_INET, &addr->sin_addr, addrString, sizeof(addrString)) == NULL)
+                                detailTable.setText(1, 1, "N/A");
+                            else
+                                detailTable.setText(1, 1, addrString);
                         }
 
                         detailTable.setText(1, 0, interface->getName());
