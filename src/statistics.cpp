@@ -63,6 +63,8 @@ public:
 void Interface::update(const Statistics& statistics) {
     static unsigned int count = 0;
 
+    updated_ = true;
+
     // First sample: there is no previous sample to diff against, so
     // speeds cannot be computed yet. Keep them at zero.
     if (!initialized_) {
@@ -95,8 +97,6 @@ void Interface::update(const Statistics& statistics) {
         receiveMax_ = receiveSpeed_;
     if (transmitSpeed_ > transmitMax_)
         transmitMax_ = transmitSpeed_;
-
-    updated_ = true;
 }
 
 void Reader::update() {
