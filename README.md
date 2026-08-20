@@ -38,9 +38,12 @@ Nowadays, CBM is maintained by volunteers.
 
 CBM depends of libncurses to build.
 
-CBM runs on Linux only: it reads `/proc/net/dev` and uses the `SIOCGIFADDR`
-ioctl to inspect network interfaces. It compiles on other systems (e.g. macOS),
-but cannot display traffic there.
+CBM runs on Linux and macOS. On Linux it reads `/proc/net/dev`; on macOS it
+reads per-interface counters with the `sysctl(3)` `NET_RT_IFLIST2` interface,
+and it looks up interface addresses with `getifaddrs(3)` on both systems. Note
+that the macOS kernel reports byte counters to non-system programs in 1 KiB
+steps and wrapped at 4 GiB; cbm copes with the wrap, but idle or very low
+traffic can read as zero between steps.
 
 To build and install, run the following commands:
 
