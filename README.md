@@ -2,6 +2,10 @@
 
 #### cbm - display in real time the network traffic speed
 
+> **Fork note:** this is a personal fork of CBM. It carries local fixes and
+> experiments ahead of the upstream project, which lives at
+> https://github.com/resurrecting-open-source-projects/cbm
+
 ## Help this project ##
 
 CBM needs your help. **If you are a programmer** and if you wants to help a
