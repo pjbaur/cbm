@@ -29,9 +29,3 @@ cbm_LDADD = -lncurses widgets/libwidgets.la
 check_PROGRAMS = test-statistics
 test_statistics_SOURCES = tests/test-statistics.cpp statistics.cpp
 TESTS = test-statistics
-
-distclean-local:
-	-rm -f *~ \
-	Makefile.in \
-	config.h.in \
-	widgets/Makefile.in
