@@ -1,3 +1,29 @@
+cbm 0.4.1 (unreleased)
+   * Fixed interfaces being culled from the display on every update
+     (regression in the uninitialized-statistics fix) and during the
+     warmup window; interfaces now persist from the first frame.
+   * Fixed counter resets and non-positive time deltas producing huge
+     speed spikes and permanently polluted peak statistics.
+   * Gave each interface its own warmup counter, so late-appearing
+     interfaces get correct peak warmup.
+   * Extracted /proc/net/dev parsing into a testable function and added
+     a unit test suite (automake TESTS, 27 checks).
+   * Fixed unchecked strcpy into ifr_name and unhandled inet_ntop
+     failure in the interface address lookup.
+   * Fixed the VerticalTable include guard and the Interface detail
+     value cell style.
+   * Added a .gitignore and dropped the destructive distclean-local
+     rules; pristine sources are restored with ./autogen.sh clean.
+   * Check for the ncurses library at configure time and build with
+     -Wall -Wextra (fixing all surfaced warnings, including %Lu
+     sscanf conversions).
+   * Documented the Linux-only platform requirement and the interactive
+     keys (including the p/n aliases) in README and the manpage; added
+     a manpage key check to the release checklist.
+   * Distribute cbm.txt, create-man.sh and cbm.1 in dist tarballs.
+   * Updated CI: actions/checkout@v4, Ubuntu 22.04/24.04 matrix,
+     gcc/clang builds with make check, and an ASan+UBSan job.
+
 cbm 0.4 - 26 Mar. 2025
    * Increased max rows to display from 8 to 64. Thanks to Jason Bowen
      <jbowen@infinitecactus.com>.
