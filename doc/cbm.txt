@@ -17,7 +17,7 @@ OPTIONS
 INTERACTIVE CONTROL
   cbm can be controlled with the following keys:
 
-  Up/Down  Select an interface to show details about.
+  Up/Down, p/n  Select an interface to show details about.
   q        Exit from the program.
   b        Switch between bits per second and bytes per second.
   +        Increase the update delay by 100ms.
