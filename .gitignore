@@ -41,5 +41,9 @@ src/config.h.in
 
 # test harness outputs
 src/test-statistics
+src/test-statistics.log
 *.trs
 test-suite.log
+
+# dist output
+*.tar.gz
