@@ -50,9 +50,6 @@
 // than the original value of 8.
 #define MAX_ROWS 64
 
-// Externs
-extern int optind, opterr, optopt;
-
 namespace {
 
 // Globals
