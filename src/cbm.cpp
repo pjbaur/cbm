@@ -208,7 +208,7 @@ int main(int argc, char **argv) {
             // Populate the detail table
             detailTable.setText (0, 0, "Interface");
             detailTable.setStyle(0, 0, COLOR_PAIR(COLOR_HEADING) | A_BOLD);
-            detailTable.setStyle(1, 1, A_NORMAL);
+            detailTable.setStyle(1, 0, A_NORMAL);
 
             detailTable.setText (0, 1, "Address");
             detailTable.setStyle(0, 1, COLOR_PAIR(COLOR_HEADING) | A_BOLD);
