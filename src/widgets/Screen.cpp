@@ -55,11 +55,13 @@ void Screen::removeChild(Window* window) {
 unsigned Screen::getWidth() const {
     int y, x;
     getmaxyx((WINDOW*) win_, y, x);
+    (void) y;
     return x;
 }
 
 unsigned Screen::getHeight() const {
     int y, x;
     getmaxyx((WINDOW*) win_, y, x);
+    (void) x;
     return y;
 }
