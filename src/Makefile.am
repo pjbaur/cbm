@@ -26,6 +26,10 @@ cbm_SOURCES = cbm.cpp \
 	      statistics.cpp statistics.hpp
 cbm_LDADD = -lncurses widgets/libwidgets.la
 
+check_PROGRAMS = test-statistics
+test_statistics_SOURCES = tests/test-statistics.cpp statistics.cpp
+TESTS = test-statistics
+
 distclean-local:
 	-rm -f *~ \
 	Makefile.in \
