@@ -49,4 +49,9 @@ AC_CHECK_LIB([ncurses], [initscr], [],
 #
 AC_CONFIG_MACRO_DIRS([m4])
 AC_CONFIG_FILES([Makefile doc/Makefile src/Makefile src/widgets/Makefile])
+
+if test "$GXX" = yes; then
+    CXXFLAGS="$CXXFLAGS -Wall -Wextra"
+fi
+
 AC_OUTPUT
