@@ -28,3 +28,14 @@ jobs:
     - run: cbm --version
     - run: sudo make uninstall
 
+  sanitize:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - run: sudo apt install libncurses-dev
+    - run: ./autogen.sh
+    - run: ./configure CXXFLAGS="-g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer" LDFLAGS="-fsanitize=address,undefined"
+    - run: make
+    - run: make check
+    - run: src/cbm --version
+
