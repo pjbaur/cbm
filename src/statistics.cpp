@@ -23,7 +23,6 @@
 #include "statistics.hpp"
 #include "ErrnoError.hpp"
 #include <algorithm>
-#include <assert.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
