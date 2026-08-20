@@ -38,3 +38,8 @@ src/cbm
 src/config.h
 src/config.h.in
 *~
+
+# test harness outputs
+src/test-statistics
+*.trs
+test-suite.log

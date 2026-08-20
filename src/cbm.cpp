@@ -64,7 +64,7 @@ struct option longopts[] =
 
 volatile sig_atomic_t quit = false;
 
-void endHandler(int signum) {
+void endHandler(int /*signum*/) {
     quit = true;
 }
 

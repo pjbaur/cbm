@@ -127,8 +127,8 @@ SampleList parseProcNetDev(const std::string& content,
         std::memset(&stats, 0, sizeof(stats));
         stats.timestamp = timestamp;
         if (sscanf(line.c_str() + colon + 1,
-                   "%Lu %Lu %Lu %Lu %Lu %Lu %Lu %Lu "
-                   "%Lu %Lu %Lu %Lu %Lu %Lu %Lu %Lu",
+                   "%llu %llu %llu %llu %llu %llu %llu %llu "
+                   "%llu %llu %llu %llu %llu %llu %llu %llu",
                    &stats.rx_bytes, &stats.rx_packets, &stats.rx_errs, &stats.rx_drop,
                    &stats.rx_fifo, &stats.rx_frame, &stats.rx_compressed, &stats.rx_multicast,
                    &stats.tx_bytes, &stats.tx_packets, &stats.tx_errs, &stats.tx_drop,
