@@ -40,6 +40,8 @@ AC_CANONICAL_HOST
 
 # Checks for header files.
 AC_CHECK_HEADER(curses.h,[],[ AC_MSG_ERROR(curses.h not found or too old.) ], [])
+AC_CHECK_LIB([ncurses], [initscr], [],
+             [AC_MSG_ERROR([ncurses library not found])])
 
 # Checks for typedefs, structures, and compiler characteristics.
 
