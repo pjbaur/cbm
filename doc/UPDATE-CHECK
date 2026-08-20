@@ -5,5 +5,6 @@ When updating, change the following files (if needed):
 - Check for spelling errors in ChangeLog and manpage.
 - Update doc/create-man.sh (DATE, version)
 - Generate a new manpage.
+- Verify keys in doc/cbm.txt match key handling in src/cbm.cpp.
 - Updated README.md
 - Updated version in configure.ac (VERSION)
