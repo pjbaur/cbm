@@ -8,7 +8,7 @@
 TEST=$(txt2man -h 2> /dev/null)
 [ "$TEST" ] || { echo -e "\nYou need to install txt2man, from https://github.com/mvertes/txt2man.\n"; exit 1; }
 
-T2M_DATE="26 Mar 2025"
+T2M_DATE="20 Aug 2026"
 T2M_NAME=cbm
 T2M_VERSION=0.4
 T2M_LEVEL=1

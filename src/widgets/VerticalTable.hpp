@@ -1,5 +1,5 @@
 #ifndef CBM_WIDGETS_VERTICALTABLE_HPP
-#define CBM_WIDGETS__HPP
+#define CBM_WIDGETS_VERTICALTABLE_HPP
 
 #include "Window.hpp"
 #include <string>
