@@ -50,9 +50,6 @@
 // than the original value of 8.
 #define MAX_ROWS 64
 
-// Externs
-extern int optind, opterr, optopt;
-
 namespace {
 
 // Globals
@@ -208,7 +205,7 @@ int main(int argc, char **argv) {
             // Populate the detail table
             detailTable.setText (0, 0, "Interface");
             detailTable.setStyle(0, 0, COLOR_PAIR(COLOR_HEADING) | A_BOLD);
-            detailTable.setStyle(1, 1, A_NORMAL);
+            detailTable.setStyle(1, 0, A_NORMAL);
 
             detailTable.setText (0, 1, "Address");
             detailTable.setStyle(0, 1, COLOR_PAIR(COLOR_HEADING) | A_BOLD);
@@ -323,20 +320,21 @@ int main(int argc, char **argv) {
                     if (index == interfaceTable.getActiveRow()) {
                         // Get the details for the active interface
                         struct ifreq req;
-                        strcpy(req.ifr_name, interface->getName().c_str());
+                        std::memset(&req, 0, sizeof(req));
+                        std::strncpy(req.ifr_name, interface->getName().c_str(), IFNAMSIZ - 1);
+                        req.ifr_name[IFNAMSIZ - 1] = '\0';
                         if (ioctl(sock, SIOCGIFADDR, &req)) {
                             detailTable.setText(1, 1, "N/A");
                         }
                         else {
-                            char addrString[100];
+                            char addrString[INET_ADDRSTRLEN];
                             struct sockaddr_in *addr
                                     = reinterpret_cast<struct sockaddr_in*>(
                                           &req.ifr_addr);
-                            inet_ntop(addr->sin_family,
-                                      &addr->sin_addr,
-                                      addrString, 100);
-
-                            detailTable.setText(1, 1, addrString);
+                            if (inet_ntop(AF_INET, &addr->sin_addr, addrString, sizeof(addrString)) == NULL)
+                                detailTable.setText(1, 1, "N/A");
+                            else
+                                detailTable.setText(1, 1, addrString);
                         }
 
                         detailTable.setText(1, 0, interface->getName());
