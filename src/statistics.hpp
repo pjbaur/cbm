@@ -26,6 +26,7 @@
 #include <list>
 #include <string>
 #include <sys/time.h>
+#include <vector>
 
 namespace statistics {
 
@@ -36,6 +37,16 @@ struct Statistics {
              tx_bytes, tx_packets, tx_errs, tx_drop, tx_fifo,
              tx_frame, tx_compressed, tx_multicast;
 };
+
+struct Sample {
+    std::string name;
+    Statistics statistics;
+};
+typedef std::vector<Sample> SampleList;
+
+// Parse the contents of /proc/net/dev. All samples share `timestamp`.
+SampleList parseProcNetDev(const std::string& content,
+                           const struct timeval& timestamp);
 
 class Interface {
 public:
@@ -65,6 +76,7 @@ private:
 class Reader {
 public:
     void update();
+    void update(const std::string& devFileContents);
 
     typedef std::list<Interface> Interfaces;
     const Interfaces& getInterfaces() const;

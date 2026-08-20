@@ -50,10 +50,45 @@ static void test_marked_updated_during_warmup() {   // the count<8 path also ski
     CHECK(iface.getUpdated());
 }
 
+static const char* const TWO_IFACE_FIXTURE =
+    "Inter-|   Receive                             |  Transmit\n"
+    " face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets\n"
+    "  lo: 123456 789 0 0 0 0 0 0  654321 432 0 0 0 0 0 0\n"
+    "  eth0: 1000 10 0 0 0 0 0 0  2000 20 0 0 0 0 0 0\n";
+
+static void test_parse_extracts_interfaces() {
+    struct timeval tv; tv.tv_sec = 42; tv.tv_usec = 7;
+    statistics::SampleList out = statistics::parseProcNetDev(TWO_IFACE_FIXTURE, tv);
+    CHECK(out.size() == 2);
+    CHECK(out[0].name == "lo");
+    CHECK(out[1].name == "eth0");
+    CHECK(out[1].statistics.rx_bytes == 1000);
+    CHECK(out[1].statistics.tx_bytes == 2000);
+    CHECK(out[1].statistics.rx_packets == 10);
+    CHECK(out[1].statistics.timestamp.tv_sec == 42);
+}
+
+static void test_parse_skips_malformed_lines() {
+    struct timeval tv; tv.tv_sec = 0; tv.tv_usec = 0;
+    statistics::SampleList out = statistics::parseProcNetDev(
+        "garbage no colon\n eth9: 1 2 3\n", tv);
+    CHECK(out.empty());
+}
+
+static void test_reader_update_from_string() {    // would have caught a7a3b52
+    statistics::Reader reader;
+    reader.update(TWO_IFACE_FIXTURE);
+    reader.update(TWO_IFACE_FIXTURE);
+    CHECK(reader.getInterfaces().size() == 2);
+}
+
 int main() {
     test_ctor_zeroes_members();
     test_marked_updated_after_first_sample();
     test_marked_updated_during_warmup();
+    test_parse_extracts_interfaces();
+    test_parse_skips_malformed_lines();
+    test_reader_update_from_string();
     if (failures) {
         std::fprintf(stderr, "%d/%d checks FAILED\n", failures, checks);
         return EXIT_FAILURE;

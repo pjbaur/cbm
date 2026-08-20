@@ -29,6 +29,7 @@
 #include <string.h>
 #include <time.h>
 #include <sys/time.h>
+#include <sstream>
 
 #define PROC_NET_DEV "/proc/net/dev"
 
@@ -98,81 +99,72 @@ void Interface::update(const Statistics& statistics) {
         transmitMax_ = transmitSpeed_;
 }
 
-void Reader::update() {
-    // Open /proc/net/dev
-    FILE *dev = fopen(PROC_NET_DEV, "r");
-    if (!dev)
-        throw ErrnoError("cannot open " PROC_NET_DEV);
+SampleList parseProcNetDev(const std::string& content,
+                           const struct timeval& timestamp) {
+    SampleList samples;
+    std::istringstream stream(content);
+    std::string line;
+    while (std::getline(stream, line)) {      // replaces while(!feof)+unchecked fgets
+        std::string::size_type colon = line.find(':');
+        if (colon == std::string::npos) continue;
 
-    try {
-        // Clear the 'updated' flag for all interfaces
-        for (Interfaces::iterator interface = interfaces_.begin();
-                interface != interfaces_.end(); ++interface)
-            interface->setUpdated(false);
+        std::string name = line.substr(0, colon);
+        std::string::size_type start = name.find_first_not_of(" \t");
+        name = (start == std::string::npos) ? std::string() : name.substr(start);
 
-        // Read /proc/dev/net
-        while (!feof(dev)) {
-            char buf[500];
-            char *name, *statistics_string;
-            Statistics stats;
-            struct timezone unused_timezone;
-
-            // Read a line
-            fgets(buf, sizeof(buf), dev);
-            gettimeofday(&stats.timestamp, &unused_timezone);
-
-            // Find the colon separating the name from the statistics
-            statistics_string = strchr(buf, ':');
-            if (!statistics_string) continue;
-
-            // Get a pointer to the statistics
-            *statistics_string = 0;
-            ++statistics_string;
-
-            // Remove leading whitespace from the name
-            name = buf;
-            while (*name == ' ' || *name == '\t') ++name;
-
-            // Parse the statistics
-            if (sscanf(statistics_string, "%Lu %Lu %Lu %Lu %Lu %Lu %Lu %Lu "
-                       "%Lu %Lu %Lu %Lu %Lu %Lu %Lu %Lu",
-                       &stats.rx_bytes, &stats.rx_packets,
-                       &stats.rx_errs, &stats.rx_drop,
-                       &stats.rx_fifo, &stats.rx_frame,
-                       &stats.rx_compressed, &stats.rx_multicast,
-                       &stats.tx_bytes, &stats.tx_packets,
-                       &stats.tx_errs, &stats.tx_drop,
-                       &stats.tx_fifo, &stats.tx_frame,
-                       &stats.tx_compressed, &stats.tx_multicast)
-                    == 16) {
-
-                // Find the interface with the same name
-                Interfaces::iterator interface
-                        = std::find_if(interfaces_.begin(), interfaces_.end(),
-                                       InterfaceNameMatchesPredicate(name));
-
-                if (interface == interfaces_.end()) {
-                    // This is a new interface; add it to the list
-                    interfaces_.push_back(Interface(name));
-                    interface = interfaces_.end();
-                    --interface;
-                }
-
-                // Update the interface
-                interface->update(stats);
-            }
+        Statistics stats;
+        std::memset(&stats, 0, sizeof(stats));
+        stats.timestamp = timestamp;
+        if (sscanf(line.c_str() + colon + 1,
+                   "%Lu %Lu %Lu %Lu %Lu %Lu %Lu %Lu "
+                   "%Lu %Lu %Lu %Lu %Lu %Lu %Lu %Lu",
+                   &stats.rx_bytes, &stats.rx_packets, &stats.rx_errs, &stats.rx_drop,
+                   &stats.rx_fifo, &stats.rx_frame, &stats.rx_compressed, &stats.rx_multicast,
+                   &stats.tx_bytes, &stats.tx_packets, &stats.tx_errs, &stats.tx_drop,
+                   &stats.tx_fifo, &stats.tx_frame, &stats.tx_compressed, &stats.tx_multicast)
+                == 16) {
+            Sample sample = { name, stats };
+            samples.push_back(sample);
         }
-
-        // Remove all interfaces for which the updated flag was not set
-        interfaces_.remove_if(InterfaceNotUpdatedPredicate());
-
-        // Close the file
-        fclose(dev);
     }
-    catch (...) {
-        fclose(dev);
-        throw;
+    return samples;
+}
+
+void Reader::update() {
+    FILE* dev = fopen(PROC_NET_DEV, "r");
+    if (!dev) throw ErrnoError("cannot open " PROC_NET_DEV);
+    std::string content;
+    char buf[4096];
+    size_t n;
+    while ((n = fread(buf, 1, sizeof(buf), dev)) > 0) content.append(buf, n);
+    bool readError = (ferror(dev) != 0);
+    fclose(dev);
+    if (readError) throw ErrnoError("cannot read " PROC_NET_DEV);
+    update(content);
+}
+
+void Reader::update(const std::string& devFileContents) {
+    struct timeval now;
+    struct timezone unused_timezone;
+    gettimeofday(&now, &unused_timezone);     // single timestamp for the whole read
+
+    const SampleList samples = parseProcNetDev(devFileContents, now);
+
+    for (Interfaces::iterator i = interfaces_.begin(); i != interfaces_.end(); ++i)
+        i->setUpdated(false);
+
+    for (SampleList::const_iterator s = samples.begin(); s != samples.end(); ++s) {
+        Interfaces::iterator interface
+            = std::find_if(interfaces_.begin(), interfaces_.end(),
+                           InterfaceNameMatchesPredicate(s->name));
+        if (interface == interfaces_.end()) {
+            interfaces_.push_back(Interface(s->name));
+            interface = interfaces_.end();
+            --interface;
+        }
+        interface->update(s->statistics);
     }
+    interfaces_.remove_if(InterfaceNotUpdatedPredicate());
 }
 
 void Interface::setUpdated(bool updated) {
