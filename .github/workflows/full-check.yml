@@ -46,6 +46,7 @@ jobs:
         os: [macos-14, macos-15]
     steps:
     - uses: actions/checkout@v4
+    - run: brew install autoconf automake libtool
     - run: ./autogen.sh
     - run: ./configure CXXFLAGS="-Wall -Wextra"
     - run: make
