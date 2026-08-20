@@ -37,12 +37,12 @@
 
 #include <curses.h>
 #include <getopt.h>
+#include <ifaddrs.h>
+#include <netinet/in.h>
 #include <signal.h>
-#include <sys/ioctl.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
-#include <net/if.h>
 #include <unistd.h>
 
 // Set the max number of rows (and thus interfaces) to display. The
@@ -109,6 +109,27 @@ void usage(std::ostream& out) {
         "  --version  Display version information and exit\n";
 }
 
+std::string interfaceIPv4Address(const std::string& ifname) {
+    struct ifaddrs* interfaces = NULL;
+    if (getifaddrs(&interfaces) != 0)
+        return "N/A";
+    std::string address = "N/A";
+    for (struct ifaddrs* i = interfaces; i != NULL; i = i->ifa_next) {
+        if (i->ifa_addr == NULL || i->ifa_addr->sa_family != AF_INET) continue;
+        if (ifname != i->ifa_name) continue;
+        char addressString[INET_ADDRSTRLEN];
+        const struct sockaddr_in* addr
+                = reinterpret_cast<const struct sockaddr_in*>(i->ifa_addr);
+        if (inet_ntop(AF_INET, &addr->sin_addr, addressString,
+                      sizeof(addressString)) != NULL) {
+            address = addressString;
+            break;
+        }
+    }
+    freeifaddrs(interfaces);
+    return address;
+}
+
 } // anonymous namespace
 
 enum {
@@ -153,227 +174,199 @@ int main(int argc, char **argv) {
 
         int interval = 1000;
 
-        // Create a socket (for ioctls)
-        int sock = socket(AF_INET, SOCK_DGRAM, 0);
-        if (sock < 0) throw ErrnoError("cannot open socket");
+        // Initialize curses
+        Screen screen;
+        nonl();
+        cbreak();
+        noecho();
+        timeout(interval);
+        curs_set(0);
+        keypad(stdscr, TRUE);
 
-        try {
-            // Initialize curses
-            Screen screen;
-            nonl();
-            cbreak();
-            noecho();
-            timeout(interval);
-            curs_set(0);
-            keypad(stdscr, TRUE);
+        if (has_colors()) {
+            start_color();
+            init_pair(COLOR_TITLE,	COLOR_WHITE, 	COLOR_BLUE);
+            init_pair(COLOR_HEADING, 	COLOR_RED, 	COLOR_BLACK);
+            init_pair(COLOR_STATUSBAR, 	COLOR_WHITE, 	COLOR_BLUE);
+        }
 
-            if (has_colors()) {
-                start_color();
-                init_pair(COLOR_TITLE,	COLOR_WHITE, 	COLOR_BLUE);
-                init_pair(COLOR_HEADING, 	COLOR_RED, 	COLOR_BLACK);
-                init_pair(COLOR_STATUSBAR, 	COLOR_WHITE, 	COLOR_BLUE);
+        // Create the title and status bars
+        Bar titleBar(screen);
+        titleBar.setStyle(COLOR_PAIR(COLOR_TITLE) | A_BOLD);
+        titleBar.setBackground(' ' | COLOR_PAIR(COLOR_TITLE));
+
+        Bar statusBar(screen);
+        statusBar.setStyle(COLOR_PAIR(COLOR_STATUSBAR) | A_BOLD);
+        statusBar.setBackground(' ' | COLOR_PAIR(COLOR_STATUSBAR));
+
+        // Create the interface table
+        VerticalTable interfaceTable(screen);
+        interfaceTable.setColumns(6);
+        interfaceTable.setActiveStyle(A_BOLD);
+        interfaceTable.setActiveRow(1);
+        // Position the interface table
+        interfaceTable.setPosition(2, 2);
+        interfaceTable.setSize(screen.getWidth() - 4,
+                               MAX_ROWS); // TODO
+
+        // Create the detail table
+        VerticalTable detailTable(screen);
+        detailTable.setColumns(2);
+        detailTable.setRows(2);
+        detailTable.setActiveRow(-1);
+        // Position the detail table
+        detailTable.setPosition(2, 12); // TODO
+        detailTable.setSize(screen.getWidth() - 4, 10); // TODO
+
+        // Populate the detail table
+        detailTable.setText (0, 0, "Interface");
+        detailTable.setStyle(0, 0, COLOR_PAIR(COLOR_HEADING) | A_BOLD);
+        detailTable.setStyle(1, 0, A_NORMAL);
+
+        detailTable.setText (0, 1, "Address");
+        detailTable.setStyle(0, 1, COLOR_PAIR(COLOR_HEADING) | A_BOLD);
+        detailTable.setStyle(1, 1, A_NORMAL);
+
+        bool bit_mode = false;
+
+        statistics::Reader statisticsReader;
+
+        while (!quit) {
+            // Read the keyboard input
+            int ch = getch();
+            switch (ch) {
+            case 'b':
+                bit_mode = !bit_mode;
+                break;
+
+            case 'q':
+                quit = true;
+                break;
+
+            case '+':
+                interval += 100;
+                timeout(interval);
+                break;
+
+            case '-':
+                if (interval > 100) interval -= 100;
+                timeout(interval);
+                break;
+
+            case 'p':
+            case KEY_UP:
+                interfaceTable.setActiveRow(
+                    std::max(static_cast<int>(
+                                 interfaceTable.getActiveRow() - 1), 1));
+                break;
+
+            case 'n':
+            case KEY_DOWN:
+                interfaceTable.setActiveRow(
+                    std::min(static_cast<int>(
+                                 interfaceTable.getActiveRow() + 1),
+                             static_cast<int>(
+                                 interfaceTable.getRows()) - 1));
+                break;
             }
 
-            // Create the title and status bars
-            Bar titleBar(screen);
-            titleBar.setStyle(COLOR_PAIR(COLOR_TITLE) | A_BOLD);
-            titleBar.setBackground(' ' | COLOR_PAIR(COLOR_TITLE));
+            // Update the statistics
+            statisticsReader.update();
 
-            Bar statusBar(screen);
-            statusBar.setStyle(COLOR_PAIR(COLOR_STATUSBAR) | A_BOLD);
-            statusBar.setBackground(' ' | COLOR_PAIR(COLOR_STATUSBAR));
+            // Populate the interface table
+            interfaceTable.setRows(
+                statisticsReader.getInterfaces().size() + 1);
 
-            // Create the interface table
-            VerticalTable interfaceTable(screen);
-            interfaceTable.setColumns(6);
-            interfaceTable.setActiveStyle(A_BOLD);
-            interfaceTable.setActiveRow(1);
+            interfaceTable.setText (0, 0, "Interface");
+            interfaceTable.setStyle(0, 0,
+                                    COLOR_PAIR(COLOR_HEADING) | A_BOLD);
+
+            interfaceTable.setText (1, 0, " Receive");
+            interfaceTable.setStyle(1, 0,
+                                    COLOR_PAIR(COLOR_HEADING) | A_BOLD);
+
+            interfaceTable.setText (2, 0, "Transmit");
+            interfaceTable.setStyle(2, 0,
+                                    COLOR_PAIR(COLOR_HEADING) | A_BOLD);
+
+            interfaceTable.setText (3, 0, "   Total");
+            interfaceTable.setStyle(3, 0,
+                                    COLOR_PAIR(COLOR_HEADING) | A_BOLD);
+
+            interfaceTable.setText (4, 0, "Receive Max");
+            interfaceTable.setStyle(4, 0,
+                                    COLOR_PAIR(COLOR_HEADING) | A_BOLD);
+
+            interfaceTable.setText (5, 0, "Transmit Max");
+            interfaceTable.setStyle(5, 0,
+                                    COLOR_PAIR(COLOR_HEADING) | A_BOLD);
+
+            unsigned index = 1;
+            for (statistics::Reader::Interfaces::const_iterator
+                    interface = statisticsReader.getInterfaces().begin();
+                    interface != statisticsReader.getInterfaces().end();
+                    ++interface) {
+
+                interfaceTable.setText (0, index, interface->getName());
+                interfaceTable.setStyle(0, index, A_NORMAL);
+
+                interfaceTable.setText (1, index,
+                                        formatBandwidth(interface->getReceiveSpeed(),
+                                                        bit_mode));
+                interfaceTable.setStyle(1, index, A_NORMAL);
+
+                interfaceTable.setText (2, index,
+                                        formatBandwidth(interface->getTransmitSpeed(),
+                                                        bit_mode));
+                interfaceTable.setStyle(2, index, A_NORMAL);
+
+                interfaceTable.setText (3, index,
+                                        formatBandwidth(interface->getReceiveSpeed()
+                                                        + interface->getTransmitSpeed(), bit_mode));
+                interfaceTable.setStyle(3, index, A_NORMAL);
+
+                interfaceTable.setText(4, index,
+                                        formatBandwidth(interface->getReceiveMax(), bit_mode));
+                interfaceTable.setStyle(4, index, A_NORMAL);
+
+                interfaceTable.setText(5, index,
+                                        formatBandwidth(interface->getTransmitMax(), bit_mode));
+                interfaceTable.setStyle(5, index, A_NORMAL);
+
+                if (index == interfaceTable.getActiveRow()) {
+                    // Get the details for the active interface
+                    detailTable.setText(1, 1, interfaceIPv4Address(interface->getName()));
+                    detailTable.setText(1, 0, interface->getName());
+                }
+
+                ++index;
+            }
+
+            // Position the title
+            titleBar.setPosition(0, 0);
+            titleBar.setSize(screen.getWidth(), 1);
+            titleBar.setText("Color Bandwidth Meter");
+
+            // Position the status bar
+            statusBar.setPosition(0, screen.getHeight() - 1);
+            statusBar.setSize(screen.getWidth(), 1);
+            std::ostringstream s;
+            s << "Up/down | q Quit | b Bits/Bytes | "
+              "+- Update interval (" << interval << "ms)";
+            statusBar.setText(s.str());
+
             // Position the interface table
             interfaceTable.setPosition(2, 2);
             interfaceTable.setSize(screen.getWidth() - 4,
                                    MAX_ROWS); // TODO
 
-            // Create the detail table
-            VerticalTable detailTable(screen);
-            detailTable.setColumns(2);
-            detailTable.setRows(2);
-            detailTable.setActiveRow(-1);
             // Position the detail table
             detailTable.setPosition(2, 12); // TODO
             detailTable.setSize(screen.getWidth() - 4, 10); // TODO
 
-            // Populate the detail table
-            detailTable.setText (0, 0, "Interface");
-            detailTable.setStyle(0, 0, COLOR_PAIR(COLOR_HEADING) | A_BOLD);
-            detailTable.setStyle(1, 0, A_NORMAL);
-
-            detailTable.setText (0, 1, "Address");
-            detailTable.setStyle(0, 1, COLOR_PAIR(COLOR_HEADING) | A_BOLD);
-            detailTable.setStyle(1, 1, A_NORMAL);
-
-            bool bit_mode = false;
-
-            statistics::Reader statisticsReader;
-
-            while (!quit) {
-                // Read the keyboard input
-                int ch = getch();
-                switch (ch) {
-                case 'b':
-                    bit_mode = !bit_mode;
-                    break;
-
-                case 'q':
-                    quit = true;
-                    break;
-
-                case '+':
-                    interval += 100;
-                    timeout(interval);
-                    break;
-
-                case '-':
-                    if (interval > 100) interval -= 100;
-                    timeout(interval);
-                    break;
-
-                case 'p':
-                case KEY_UP:
-                    interfaceTable.setActiveRow(
-                        std::max(static_cast<int>(
-                                     interfaceTable.getActiveRow() - 1), 1));
-                    break;
-
-                case 'n':
-                case KEY_DOWN:
-                    interfaceTable.setActiveRow(
-                        std::min(static_cast<int>(
-                                     interfaceTable.getActiveRow() + 1),
-                                 static_cast<int>(
-                                     interfaceTable.getRows()) - 1));
-                    break;
-                }
-
-                // Update the statistics
-                statisticsReader.update();
-
-                // Populate the interface table
-                interfaceTable.setRows(
-                    statisticsReader.getInterfaces().size() + 1);
-
-                interfaceTable.setText (0, 0, "Interface");
-                interfaceTable.setStyle(0, 0,
-                                        COLOR_PAIR(COLOR_HEADING) | A_BOLD);
-
-                interfaceTable.setText (1, 0, " Receive");
-                interfaceTable.setStyle(1, 0,
-                                        COLOR_PAIR(COLOR_HEADING) | A_BOLD);
-
-                interfaceTable.setText (2, 0, "Transmit");
-                interfaceTable.setStyle(2, 0,
-                                        COLOR_PAIR(COLOR_HEADING) | A_BOLD);
-
-                interfaceTable.setText (3, 0, "   Total");
-                interfaceTable.setStyle(3, 0,
-                                        COLOR_PAIR(COLOR_HEADING) | A_BOLD);
-
-                interfaceTable.setText (4, 0, "Receive Max");
-                interfaceTable.setStyle(4, 0,
-                                        COLOR_PAIR(COLOR_HEADING) | A_BOLD);
-
-                interfaceTable.setText (5, 0, "Transmit Max");
-                interfaceTable.setStyle(5, 0,
-                                        COLOR_PAIR(COLOR_HEADING) | A_BOLD);
-
-                unsigned index = 1;
-                for (statistics::Reader::Interfaces::const_iterator
-                        interface = statisticsReader.getInterfaces().begin();
-                        interface != statisticsReader.getInterfaces().end();
-                        ++interface) {
-
-                    interfaceTable.setText (0, index, interface->getName());
-                    interfaceTable.setStyle(0, index, A_NORMAL);
-
-                    interfaceTable.setText (1, index,
-                                            formatBandwidth(interface->getReceiveSpeed(),
-                                                            bit_mode));
-                    interfaceTable.setStyle(1, index, A_NORMAL);
-
-                    interfaceTable.setText (2, index,
-                                            formatBandwidth(interface->getTransmitSpeed(),
-                                                            bit_mode));
-                    interfaceTable.setStyle(2, index, A_NORMAL);
-
-                    interfaceTable.setText (3, index,
-                                            formatBandwidth(interface->getReceiveSpeed()
-                                                            + interface->getTransmitSpeed(), bit_mode));
-                    interfaceTable.setStyle(3, index, A_NORMAL);
-
-                    interfaceTable.setText(4, index,
-                                            formatBandwidth(interface->getReceiveMax(), bit_mode));
-                    interfaceTable.setStyle(4, index, A_NORMAL);
-
-                    interfaceTable.setText(5, index,
-                                            formatBandwidth(interface->getTransmitMax(), bit_mode));
-                    interfaceTable.setStyle(5, index, A_NORMAL);
-
-                    if (index == interfaceTable.getActiveRow()) {
-                        // Get the details for the active interface
-                        struct ifreq req;
-                        std::memset(&req, 0, sizeof(req));
-                        std::strncpy(req.ifr_name, interface->getName().c_str(), IFNAMSIZ - 1);
-                        req.ifr_name[IFNAMSIZ - 1] = '\0';
-                        if (ioctl(sock, SIOCGIFADDR, &req)) {
-                            detailTable.setText(1, 1, "N/A");
-                        }
-                        else {
-                            char addrString[INET_ADDRSTRLEN];
-                            struct sockaddr_in *addr
-                                    = reinterpret_cast<struct sockaddr_in*>(
-                                          &req.ifr_addr);
-                            if (inet_ntop(AF_INET, &addr->sin_addr, addrString, sizeof(addrString)) == NULL)
-                                detailTable.setText(1, 1, "N/A");
-                            else
-                                detailTable.setText(1, 1, addrString);
-                        }
-
-                        detailTable.setText(1, 0, interface->getName());
-                    }
-
-                    ++index;
-                }
-
-                // Position the title
-                titleBar.setPosition(0, 0);
-                titleBar.setSize(screen.getWidth(), 1);
-                titleBar.setText("Color Bandwidth Meter");
-
-                // Position the status bar
-                statusBar.setPosition(0, screen.getHeight() - 1);
-                statusBar.setSize(screen.getWidth(), 1);
-                std::ostringstream s;
-                s << "Up/down | q Quit | b Bits/Bytes | "
-                  "+- Update interval (" << interval << "ms)";
-                statusBar.setText(s.str());
-
-                // Position the interface table
-                interfaceTable.setPosition(2, 2);
-                interfaceTable.setSize(screen.getWidth() - 4,
-                                       MAX_ROWS); // TODO
-
-                // Position the detail table
-                detailTable.setPosition(2, 12); // TODO
-                detailTable.setSize(screen.getWidth() - 4, 10); // TODO
-
-                // Update everything
-                screen.update();
-            }
+            // Update everything
+            screen.update();
         }
-        catch (...) {
-            close(sock);
-            throw;
-        }
-        close(sock);
     } catch (const std::exception& e) {
         std::cerr << PACKAGE << ": " << e.what() << '\n';
         retval = EXIT_FAILURE;
