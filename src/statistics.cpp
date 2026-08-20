@@ -36,7 +36,7 @@
 namespace statistics {
 
 Interface::Interface(const std::string& name)
-    : name_(name), updated_(false), initialized_(false),
+    : name_(name), updated_(false), initialized_(false), warmupCount_(0),
       receiveSpeed_(0.0), transmitSpeed_(0.0),
       receiveMax_(0.0), transmitMax_(0.0) {
     memset(statistics_, 0, sizeof(statistics_));
@@ -61,8 +61,6 @@ public:
 };
 
 void Interface::update(const Statistics& statistics) {
-    static unsigned int count = 0;
-
     updated_ = true;
 
     // First sample: there is no previous sample to diff against, so
@@ -92,18 +90,18 @@ void Interface::update(const Statistics& statistics) {
         // it), leave the maxima untouched.
         receiveSpeed_ = 0.0;
         transmitSpeed_ = 0.0;
-        count++;
+        warmupCount_++;
         return;
     }
 
     receiveSpeed_ = (x1.rx_bytes - x0.rx_bytes) / timeDelta;
     transmitSpeed_ = (x1.tx_bytes - x0.tx_bytes) / timeDelta;
 
-    count++;
+    warmupCount_++;
 
     // Waits some iterations before calculating max speeds.
     // This avoids presenting wrong initial peaks.
-    if (count < 8)
+    if (warmupCount_ < 8)
         return;
 
     if (receiveSpeed_ > receiveMax_)

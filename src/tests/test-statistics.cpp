@@ -108,6 +108,37 @@ static void test_counter_reset_does_not_spike() {
     CHECK_NEAR(iface.getReceiveSpeed(), 500.0, 1e-9);
 }
 
+static void test_late_interface_gets_own_warmup() {
+    statistics::Interface early("eth0"), late("wlan0");
+    statistics::Statistics s; std::memset(&s, 0, sizeof(s));
+    s.rx_bytes = 1000; s.tx_bytes = 1000;
+    for (int i = 0; i < 50; ++i) {
+        s.timestamp.tv_sec = 100 + i;
+        early.update(s);
+        s.rx_bytes += 100; s.tx_bytes += 100;
+    }
+    CHECK(early.getReceiveMax() > 0.0);
+    s.timestamp.tv_sec = 200;
+    s.rx_bytes = 500000; s.tx_bytes = 500000;
+    late.update(s);
+    s.timestamp.tv_sec = 201; s.rx_bytes += 10; s.tx_bytes += 10;
+    late.update(s);
+    CHECK_NEAR(late.getReceiveMax(), 0.0, 1e-9);   // FAILS at HEAD: global count >= 8
+    CHECK_NEAR(late.getReceiveSpeed(), 10.0, 1e-9);
+}
+
+static void test_max_recorded_after_warmup_window() {
+    statistics::Interface iface("eth0");
+    statistics::Statistics s; std::memset(&s, 0, sizeof(s));
+    s.rx_bytes = 0; s.tx_bytes = 0;
+    for (int i = 0; i <= 8; ++i) {
+        s.timestamp.tv_sec = i;
+        iface.update(s);
+        s.rx_bytes += 100; s.tx_bytes += 100;
+    }
+    CHECK_NEAR(iface.getReceiveMax(), 100.0, 1e-9);
+}
+
 int main() {
     test_ctor_zeroes_members();
     test_marked_updated_after_first_sample();
@@ -116,6 +147,8 @@ int main() {
     test_parse_skips_malformed_lines();
     test_reader_update_from_string();
     test_counter_reset_does_not_spike();
+    test_late_interface_gets_own_warmup();
+    test_max_recorded_after_warmup_window();
     if (failures) {
         std::fprintf(stderr, "%d/%d checks FAILED\n", failures, checks);
         return EXIT_FAILURE;

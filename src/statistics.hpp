@@ -68,6 +68,7 @@ private:
     std::string name_;
     bool updated_;
     bool initialized_;
+    unsigned int warmupCount_;
     Statistics statistics_[2];
     double receiveSpeed_, transmitSpeed_;
     double receiveMax_, transmitMax_;
