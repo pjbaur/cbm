@@ -65,7 +65,7 @@ struct option longopts[] =
     {  NULL,        0,              NULL,  0  }
 };
 
-volatile bool quit = false;
+volatile sig_atomic_t quit = false;
 
 void endHandler(int signum) {
     quit = true;
@@ -150,14 +150,15 @@ int main(int argc, char **argv) {
             }
         }
 
-        // Catch SIGINT
+        // Catch SIGINT and SIGTERM
         signal(SIGINT, endHandler);
+        signal(SIGTERM, endHandler);
 
         int interval = 1000;
 
         // Create a socket (for ioctls)
         int sock = socket(AF_INET, SOCK_DGRAM, 0);
-        if (!sock) throw ErrnoError("cannot open socket");
+        if (sock < 0) throw ErrnoError("cannot open socket");
 
         try {
             // Initialize curses
