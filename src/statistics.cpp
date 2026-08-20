@@ -159,8 +159,10 @@ void Reader::update(const std::string& devFileContents) {
     struct timezone unused_timezone;
     gettimeofday(&now, &unused_timezone);     // single timestamp for the whole read
 
-    const SampleList samples = parseProcNetDev(devFileContents, now);
+    applySamples(parseProcNetDev(devFileContents, now));
+}
 
+void Reader::applySamples(const SampleList& samples) {
     for (Interfaces::iterator i = interfaces_.begin(); i != interfaces_.end(); ++i)
         i->setUpdated(false);
 
