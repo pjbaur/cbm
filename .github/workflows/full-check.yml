@@ -39,3 +39,16 @@ jobs:
     - run: make check
     - run: src/cbm --version
 
+  macos:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [macos-14, macos-15]
+    steps:
+    - uses: actions/checkout@v4
+    - run: ./autogen.sh
+    - run: ./configure CXXFLAGS="-Wall -Wextra"
+    - run: make
+    - run: make check
+    - run: src/cbm --version
+
